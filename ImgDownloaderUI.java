@@ -1,12 +1,15 @@
 import javax.swing.*;
 import javax.swing.border.Border;
-import javax.swing.border.LineBorder;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
 import java.net.URL;
 import java.util.Arrays;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class ImgDownloaderUI extends JFrame {
     private JTextArea urlTextArea;
@@ -138,20 +141,39 @@ public class ImgDownloaderUI extends JFrame {
         File dir = new File(directoryPath);
         if (!dir.exists()) dir.mkdirs();
 
-        int count = 0;
+        int totalThreads = 10; // Número de downloads simultâneos
+        ExecutorService executor = Executors.newFixedThreadPool(totalThreads);
+        AtomicInteger count = new AtomicInteger();
+
         for (int i = 0; i < urls.length; i++) {
             String url = urls[i].trim();
             if (!url.isBlank()) {
-                try {
-                    java.nio.file.Path path = java.nio.file.Paths.get(dir.getAbsolutePath(), "imagem_" + (i + 1) + ".jpg");
-                    java.io.InputStream in = new URL(url).openStream();
-                    java.nio.file.Files.copy(in, path, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                    in.close();
-                    count++;
-                } catch (Exception ex) {
-                    System.err.println("Erro ao baixar imagem " + url + ": " + ex.getMessage());
-                }
+                int index = i; // Para capturar o índice corretamente na lambda
+                executor.submit(() -> {
+                    try {
+                        java.nio.file.Path path = java.nio.file.Paths.get(dir.getAbsolutePath(), "imagem_" + (index + 1) + ".jpg");
+                        try (java.io.InputStream in = new URL(url).openStream();
+                             java.io.FileOutputStream out = new java.io.FileOutputStream(path.toFile())) {
+                            byte[] buffer = new byte[8192]; // Buffer de 8 KB
+                            int bytesRead;
+                            while ((bytesRead = in.read(buffer)) != -1) {
+                                out.write(buffer, 0, bytesRead);
+                            }
+                        }
+                        synchronized (this) {
+                            count.getAndIncrement();
+                        }
+                    } catch (Exception ex) {
+                        System.err.println("Erro ao baixar imagem " + url + ": " + ex.getMessage());
+                    }
+                });
             }
+        }
+        executor.shutdown();
+        try {
+            executor.awaitTermination(15, TimeUnit.MINUTES); // Aguarda até 15 minutos
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
 
         JOptionPane.showMessageDialog(this, "Download concluído: " + count + " imagem(ns) baixada(s).", "Sucesso", JOptionPane.INFORMATION_MESSAGE);
