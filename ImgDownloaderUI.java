@@ -16,6 +16,11 @@ public class ImgDownloaderUI extends JFrame {
     private JTextField directoryField;
     private JLabel counterLabel;
     private JLabel logoLabel;
+    private JButton downloadButton;
+    private JProgressBar progressBar;
+    private AtomicInteger count = new AtomicInteger(0);
+    private JPanel bottomPanel;
+    private CardLayout cardLayout;
 
     // Cor laranja personalizada (255,154,6)
     public static final Color ORANGE = new Color(255, 154, 6);
@@ -60,8 +65,8 @@ public class ImgDownloaderUI extends JFrame {
         rightPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5, 0, 5, 0); // Espaçamento vertical
-        gbc.anchor = GridBagConstraints.CENTER; // Centraliza os componentes
+        gbc.insets = new Insets(5, 0, 5, 0);
+        gbc.anchor = GridBagConstraints.CENTER;
 
         JLabel pathLabel = new JLabel("SELECIONE O LOCAL DE DOWNLOAD:");
         pathLabel.setForeground(ORANGE);
@@ -107,18 +112,38 @@ public class ImgDownloaderUI extends JFrame {
         }
         gbc.gridx = 0;
         gbc.gridy = 4;
-        gbc.fill = GridBagConstraints.NONE; // Não estica o componente
-        gbc.weightx = 0; // Não ocupa espaço extra horizontalmente
-        gbc.weighty = 1; // Ocupa espaço vertical restante para centralizar
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.weightx = 0;
+        gbc.weighty = 1;
         rightPanel.add(logoLabel, gbc);
 
         mainPanel.add(rightPanel, BorderLayout.CENTER);
 
-        // Botão inferior
-        JButton downloadButton = createOrangeButton("REALIZAR DOWNLOAD");
+        // Botão inferior e barra de progresso com CardLayout
+        cardLayout = new CardLayout();
+        bottomPanel = new JPanel(cardLayout);
+        bottomPanel.setBackground(Color.BLACK);
+
+        downloadButton = createOrangeButton("REALIZAR DOWNLOAD");
         downloadButton.setFont(new Font("Arial", Font.BOLD, 14));
         downloadButton.addActionListener(e -> iniciarDownload());
-        add(downloadButton, BorderLayout.SOUTH);
+
+        // Configurações globais para a barra de progresso
+        UIManager.put("ProgressBar.selectionForeground", Color.WHITE); // Cor do texto em preto
+        UIManager.put("ProgressBar.selectionBackground", Color.WHITE); // Cor do texto no fundo preto
+
+        progressBar = new JProgressBar(0, 100);
+        progressBar.setStringPainted(true);
+        progressBar.setForeground(ORANGE); // Cor do progresso em laranja
+        progressBar.setBackground(Color.BLACK); // Fundo da barra em preto
+        progressBar.setPreferredSize(new Dimension(400, 40)); // Tamanho maior para visibilidade
+        progressBar.setFont(new Font("Arial", Font.BOLD, 14)); // Fonte em negrito e tamanho 14
+
+        // Adiciona os componentes ao CardLayout com nomes
+        bottomPanel.add(downloadButton, "button");
+        bottomPanel.add(progressBar, "progress");
+        cardLayout.show(bottomPanel, "button"); // Começa com o botão visível
+        add(bottomPanel, BorderLayout.SOUTH);
     }
 
     private void atualizarContadorUrls() {
@@ -141,42 +166,72 @@ public class ImgDownloaderUI extends JFrame {
         File dir = new File(directoryPath);
         if (!dir.exists()) dir.mkdirs();
 
-        int totalThreads = 10; // Número de downloads simultâneos
+        // Contagem de URLs válidas
+        int totalUrls = (int) Arrays.stream(urls).filter(url -> !url.trim().isBlank()).count();
+        if (totalUrls == 0) {
+            JOptionPane.showMessageDialog(this, "Nenhuma URL válida inserida.", "Erro", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        // Alterna para a barra de progresso
+        System.out.println("Iniciando download - Mostrando barra de progresso...");
+        progressBar.setMaximum(totalUrls);
+        progressBar.setValue(0);
+        cardLayout.show(bottomPanel, "progress");
+        bottomPanel.revalidate();
+        bottomPanel.repaint();
+        System.out.println("Barra de progresso visível: " + progressBar.isVisible());
+
+        int totalThreads = 10;
         ExecutorService executor = Executors.newFixedThreadPool(totalThreads);
-        AtomicInteger count = new AtomicInteger();
+        count.set(0); // Reinicia o contador
 
         for (int i = 0; i < urls.length; i++) {
             String url = urls[i].trim();
             if (!url.isBlank()) {
-                int index = i; // Para capturar o índice corretamente na lambda
+                int index = i;
+                final int taskIndex = i;
                 executor.submit(() -> {
                     try {
-                        java.nio.file.Path path = java.nio.file.Paths.get(dir.getAbsolutePath(), "imagem_" + (index + 1) + ".jpg");
+                        java.nio.file.Path path = java.nio.file.Paths.get(dir.getAbsolutePath(), "imagem_" + (taskIndex + 1) + ".jpg");
                         try (java.io.InputStream in = new URL(url).openStream();
                              java.io.FileOutputStream out = new java.io.FileOutputStream(path.toFile())) {
-                            byte[] buffer = new byte[8192]; // Buffer de 8 KB
+                            byte[] buffer = new byte[8192];
                             int bytesRead;
                             while ((bytesRead = in.read(buffer)) != -1) {
                                 out.write(buffer, 0, bytesRead);
                             }
                         }
-                        synchronized (this) {
-                            count.getAndIncrement();
-                        }
+                        int currentCount = count.incrementAndGet();
+                        SwingUtilities.invokeLater(() -> {
+                            progressBar.setValue(currentCount);
+                            progressBar.setString(currentCount + " de " + totalUrls + " imagens");
+                            System.out.println("Progresso: " + currentCount + "/" + totalUrls);
+                        });
                     } catch (Exception ex) {
                         System.err.println("Erro ao baixar imagem " + url + ": " + ex.getMessage());
                     }
                 });
             }
         }
-        executor.shutdown();
-        try {
-            executor.awaitTermination(15, TimeUnit.MINUTES); // Aguarda até 15 minutos
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
 
-        JOptionPane.showMessageDialog(this, "Download concluído: " + count + " imagem(ns) baixada(s).", "Sucesso", JOptionPane.INFORMATION_MESSAGE);
+        executor.shutdown();
+        new Thread(() -> {
+            try {
+                while (!executor.isTerminated()) {
+                    Thread.sleep(100);
+                }
+                SwingUtilities.invokeLater(() -> {
+                    System.out.println("Download concluído - Restaurando botão...");
+                    cardLayout.show(bottomPanel, "button");
+                    bottomPanel.revalidate();
+                    bottomPanel.repaint();
+                    JOptionPane.showMessageDialog(this, "Download concluído: " + count.get() + " imagem(ns) baixada(s).", "Sucesso", JOptionPane.INFORMATION_MESSAGE);
+                });
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     private JButton createOrangeButton(String text) {
@@ -195,14 +250,14 @@ public class ImgDownloaderUI extends JFrame {
             this.radius = radius;
         }
         public Insets getBorderInsets(Component c) {
-            return new Insets(radius+1, radius+1, radius+2, radius);
+            return new Insets(radius + 1, radius + 1, radius + 2, radius);
         }
         public boolean isBorderOpaque() {
             return true;
         }
         public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
             g.setColor(ORANGE);
-            g.drawRoundRect(x, y, width-1, height-1, radius, radius);
+            g.drawRoundRect(x, y, width - 1, height - 1, radius, radius);
         }
     }
 
