@@ -1,6 +1,7 @@
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.LineBorder;
+import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
@@ -31,7 +32,9 @@ public class ImgDownloaderUI extends JFrame {
 
         // Painel de URLs
         JPanel urlPanel = new JPanel(new BorderLayout());
-        urlPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(ORANGE), "INSIRA AS URLs DAS IMAGENS:"));
+        TitledBorder titledBorder = BorderFactory.createTitledBorder(BorderFactory.createLineBorder(ORANGE), "INSIRA AS URLs DAS IMAGENS:");
+        titledBorder.setTitleColor(ORANGE);
+        urlPanel.setBorder(titledBorder);
         urlPanel.setBackground(Color.BLACK);
 
         urlTextArea = new JTextArea(10, 40);
