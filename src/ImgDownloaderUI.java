@@ -1,3 +1,5 @@
+package src;
+
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.TitledBorder;
@@ -8,7 +10,6 @@ import java.net.URL;
 import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class ImgDownloaderUI extends JFrame {
@@ -27,6 +28,13 @@ public class ImgDownloaderUI extends JFrame {
 
     public ImgDownloaderUI() {
         setTitle("DOWNLOADER DE IMAGENS");
+        try {
+            ImageIcon icon = new ImageIcon("imagens/logo1.png");
+            setIconImage(icon.getImage());
+        } catch (Exception e) {
+            System.err.println("Erro ao carregar ícone: " + e.getMessage());
+        }
+
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(800, 600);
         setLocationRelativeTo(null);
@@ -103,7 +111,7 @@ public class ImgDownloaderUI extends JFrame {
         // LOGO (certifique-se que o caminho esteja correto)
         logoLabel = new JLabel();
         try {
-            ImageIcon icon = new ImageIcon("imagens/logo.png"); // Substitua por seu caminho
+            ImageIcon icon = new ImageIcon("imagens/logo.png");
             Image scaledImage = icon.getImage().getScaledInstance(150, 150, Image.SCALE_SMOOTH);
             logoLabel.setIcon(new ImageIcon(scaledImage));
         } catch (Exception ex) {
@@ -222,11 +230,11 @@ public class ImgDownloaderUI extends JFrame {
                     Thread.sleep(100);
                 }
                 SwingUtilities.invokeLater(() -> {
-                    System.out.println("Download concluído - Restaurando botão...");
+                    System.out.println("Download concluodo - Restaurando botao...");
                     cardLayout.show(bottomPanel, "button");
                     bottomPanel.revalidate();
                     bottomPanel.repaint();
-                    JOptionPane.showMessageDialog(this, "Download concluído: " + count.get() + " imagem(ns) baixada(s).", "Sucesso", JOptionPane.INFORMATION_MESSAGE);
+                    JOptionPane.showMessageDialog(this, "Download concluido: " + count.get() + " imagens baixadas.", "Sucesso", JOptionPane.INFORMATION_MESSAGE);
                 });
             } catch (InterruptedException e) {
                 e.printStackTrace();
