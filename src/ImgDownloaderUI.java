@@ -6,8 +6,11 @@ import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -25,6 +28,11 @@ public class ImgDownloaderUI extends JFrame {
 
     // Cor laranja personalizada (255,154,6)
     public static final Color ORANGE = new Color(255, 154, 6);
+
+    // Conjunto de extensões de imagem válidas
+    private static final Set<String> VALID_IMAGE_EXTENSIONS = new HashSet<>(Arrays.asList(
+            "jpg", "jpeg", "png", "gif", "bmp", "webp"
+    ));
 
     public ImgDownloaderUI() {
         setTitle("DOWNLOADER DE IMAGENS");
@@ -174,34 +182,65 @@ public class ImgDownloaderUI extends JFrame {
         File dir = new File(directoryPath);
         if (!dir.exists()) dir.mkdirs();
 
-        // Contagem de URLs válidas
         int totalUrls = (int) Arrays.stream(urls).filter(url -> !url.trim().isBlank()).count();
         if (totalUrls == 0) {
             JOptionPane.showMessageDialog(this, "Nenhuma URL válida inserida.", "Erro", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
-        // Alterna para a barra de progresso
-        System.out.println("Iniciando download - Mostrando barra de progresso...");
         progressBar.setMaximum(totalUrls);
         progressBar.setValue(0);
         cardLayout.show(bottomPanel, "progress");
         bottomPanel.revalidate();
         bottomPanel.repaint();
-        System.out.println("Barra de progresso visível: " + progressBar.isVisible());
 
         int totalThreads = 10;
         ExecutorService executor = Executors.newFixedThreadPool(totalThreads);
-        count.set(0); // Reinicia o contador
+        count.set(0);
 
         for (int i = 0; i < urls.length; i++) {
             String url = urls[i].trim();
             if (!url.isBlank()) {
-                int index = i;
                 final int taskIndex = i;
                 executor.submit(() -> {
                     try {
-                        java.nio.file.Path path = java.nio.file.Paths.get(dir.getAbsolutePath(), "imagem_" + (taskIndex + 1) + ".jpg");
+                        java.nio.file.Path path;
+                        try {
+                            URL imageUrl = new URL(url);
+                            String path1 = imageUrl.getPath();
+                            String[] parts = path1.split("/");
+
+                            String rawName = (parts.length >= 2)
+                                    ? parts[parts.length - 2] + "-" + parts[parts.length - 1]
+                                    : "imagem_" + (taskIndex + 1);
+
+                            // Remove query parameters
+                            rawName = rawName.split("\\?")[0];
+
+                            // Extrai a extensão do nome do arquivo
+                            String fileExtension = "";
+                            int lastDotIndex = rawName.lastIndexOf(".");
+                            if (lastDotIndex != -1 && lastDotIndex < rawName.length() - 1) {
+                                fileExtension = rawName.substring(lastDotIndex + 1).toLowerCase();
+                            }
+
+                            // Verifica se a extensão é válida; se não for, usa .jpg como padrão
+                            if (!VALID_IMAGE_EXTENSIONS.contains(fileExtension)) {
+                                fileExtension = "jpg";
+                                rawName = rawName.substring(0, lastDotIndex == -1 ? rawName.length() : lastDotIndex) + ".jpg";
+                            }
+
+                            String fileName = rawName.replaceAll("[\\\\/:*?\"<>|]", "-");
+
+                            if (fileName.trim().isEmpty() || fileName.length() < 3) {
+                                fileName = "imagem_" + (taskIndex + 1) + "." + fileExtension;
+                            }
+
+                            path = java.nio.file.Paths.get(dir.getAbsolutePath(), fileName);
+                        } catch (MalformedURLException e) {
+                            throw new RuntimeException(e);
+                        }
+
                         try (java.io.InputStream in = new URL(url).openStream();
                              java.io.FileOutputStream out = new java.io.FileOutputStream(path.toFile())) {
                             byte[] buffer = new byte[8192];
@@ -210,11 +249,11 @@ public class ImgDownloaderUI extends JFrame {
                                 out.write(buffer, 0, bytesRead);
                             }
                         }
+
                         int currentCount = count.incrementAndGet();
                         SwingUtilities.invokeLater(() -> {
                             progressBar.setValue(currentCount);
                             progressBar.setString(currentCount + " de " + totalUrls + " imagens");
-                            System.out.println("Progresso: " + currentCount + "/" + totalUrls);
                         });
                     } catch (Exception ex) {
                         System.err.println("Erro ao baixar imagem " + url + ": " + ex.getMessage());
@@ -230,11 +269,24 @@ public class ImgDownloaderUI extends JFrame {
                     Thread.sleep(100);
                 }
                 SwingUtilities.invokeLater(() -> {
-                    System.out.println("Download concluodo - Restaurando botao...");
+                    System.out.println("Download concluído - Restaurando botão...");
                     cardLayout.show(bottomPanel, "button");
                     bottomPanel.revalidate();
                     bottomPanel.repaint();
-                    JOptionPane.showMessageDialog(this, "Download concluido: " + count.get() + " imagens baixadas.", "Sucesso", JOptionPane.INFORMATION_MESSAGE);
+
+                    int option = JOptionPane.showConfirmDialog(this,
+                            "Download concluído: " + count.get() + " imagens baixadas.\n\nDeseja abrir a pasta de destino?",
+                            "Sucesso", JOptionPane.YES_NO_OPTION);
+
+                    if (option == JOptionPane.YES_OPTION) {
+                        try {
+                            Desktop.getDesktop().open(new File(directoryPath));
+                        } catch (Exception ex) {
+                            JOptionPane.showMessageDialog(this,
+                                    "Erro ao abrir a pasta: " + ex.getMessage(),
+                                    "Erro", JOptionPane.ERROR_MESSAGE);
+                        }
+                    }
                 });
             } catch (InterruptedException e) {
                 e.printStackTrace();
